@@ -615,7 +615,9 @@ module dma_engine#
         if (AXI_ARESETN == 0) begin
             user_read_idle <= 1;
         end else if (user_read_start) begin
-            s_axi_rresp    <= OKAY;     // By default, we'll return a read-response of OKAY
+            
+            // By default, we'll return a read-response of OKAY
+            s_axi_rresp    <= OKAY;     
             
             // Turn the read-address into a register number
             case(s_axi_araddr >> 2)
@@ -658,7 +660,9 @@ module dma_engine#
         if (AXI_ARESETN == 0) begin
             user_write_idle <= 1;
         end else if (user_write_start) begin
-            s_axi_bresp    <= OKAY;     // By default, we'll return a write-response of OKAY
+            
+            // By default, we'll return a write-response of OKAY
+            s_axi_bresp    <= OKAY;     
             
             // Turn the write-address into a register number
             case(s_axi_awaddr >> 2)
