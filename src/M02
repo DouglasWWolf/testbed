@@ -1,0 +1,53 @@
+    //==========================================================================
+    //  This defines the AXI Master interface that connects to the data source
+    //==========================================================================
+    // "Specify write address"             -- Master --      -- Slave --
+    output wire [AXI_ADDR_WIDTH-1 : 0]     M01_AXI_AWADDR,   
+    output wire                            M01_AXI_AWVALID,  
+    input  wire                                              M01_AXI_AWREADY,
+    output wire  [2 : 0]                   M01_AXI_AWPROT,
+
+    // "Write Data"                        -- Master --      -- Slave --
+    output wire [AXI_DATA_WIDTH-1 : 0]     M01_AXI_WDATA,      
+    output wire                            M01_AXI_WVALID,
+    output wire [(AXI_DATA_WIDTH/8)-1:0]   M01_AXI_WSTRB,
+    input  wire                                              M01_AXI_WREADY,
+
+    // "Send Write Response"               -- Master --      -- Slave --
+    input  wire [1 : 0]                                      M01_AXI_BRESP,
+    input  wire                                              M01_AXI_BVALID,
+    output wire                            M01_AXI_BREADY,
+
+    // "Specify read address"              -- Master --      -- Slave --
+    output wire [AXI_ADDR_WIDTH-1 : 0]     M01_AXI_ARADDR,     
+    output wire                            M01_AXI_ARVALID,
+    output wire [2 : 0]                    M01_AXI_ARPROT,     
+    input  wire                                              M01_AXI_ARREADY,
+
+    // "Read data back to master"          -- Master --      -- Slave --
+    input  wire [AXI_DATA_WIDTH-1 : 0]                       M01_AXI_RDATA,
+    input  wire                                              M01_AXI_RVALID,
+    input  wire [1 : 0]                                      M01_AXI_RRESP,
+    output wire                            M01_AXI_RREADY,
+
+
+    // Full AXI4 signals driven by master
+    output wire[3:0]                       M01_AXI_AWID,
+    output wire[7:0]                       M01_AXI_AWLEN,
+    output wire[2:0]                       M01_AXI_AWSIZE,
+    output wire[1:0]                       M01_AXI_AWBURST,
+    output wire                            M01_AXI_AWLOCK,
+    output wire[3:0]                       M01_AXI_AWCACHE,
+    output wire[3:0]                       M01_AXI_AWQOS,
+    output wire                            M01_AXI_WLAST,
+    output wire                            M01_AXI_ARLOCK,
+    output wire[3:0]                       M01_AXI_ARID,
+    output wire[7:0]                       M01_AXI_ARLEN,
+    output wire[2:0]                       M01_AXI_ARSIZE,
+    output wire[1:0]                       M01_AXI_ARBURST,
+    output wire[3:0]                       M01_AXI_ARCACHE,
+    output wire[3:0]                       M01_AXI_ARQOS,
+
+    // Full AXI4 signals driven by slave
+    input  wire                                              M01_AXI_RLAST
+    //==========================================================================

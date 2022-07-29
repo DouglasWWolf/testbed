@@ -135,12 +135,13 @@ module dma_engine#
     output wire[3:0]                       M00_AXI_ARQOS,
 
     // Full AXI4 signals driven by slave
-    input  wire                                              M00_AXI_RLAST
+    input  wire                                              M00_AXI_RLAST,
     //==========================================================================
-
-/*
+    
+    
+    
     //==========================================================================
-    // This defines the AXI Master interface that connects to data destination
+    //  This defines the AXI Master interface that connects to the destination
     //==========================================================================
     // "Specify write address"             -- Master --      -- Slave --
     output wire [AXI_ADDR_WIDTH-1 : 0]     M01_AXI_AWADDR,   
@@ -192,7 +193,7 @@ module dma_engine#
     // Full AXI4 signals driven by slave
     input  wire                                              M01_AXI_RLAST
     //==========================================================================
-*/
+
 
 
  );

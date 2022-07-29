@@ -13,37 +13,37 @@ preplace port port-id_pb_go -pg 1 -lvl 0 -x 0 -y 420 -defaultsOSRD
 preplace inst axi_bram_ctrl_a -pg 1 -lvl 5 -x 1590 -y 500 -defaultsOSRD -pinDir S_AXI left -pinY S_AXI 0L -pinDir BRAM_PORTA right -pinY BRAM_PORTA 0R -pinDir s_axi_aclk left -pinY s_axi_aclk 20L -pinDir s_axi_aresetn left -pinY s_axi_aresetn 40L
 preplace inst axi_bram_ctrl_b -pg 1 -lvl 5 -x 1590 -y 360 -defaultsOSRD -pinDir S_AXI left -pinY S_AXI 0L -pinDir BRAM_PORTA right -pinY BRAM_PORTA 0R -pinDir s_axi_aclk left -pinY s_axi_aclk 20L -pinDir s_axi_aresetn left -pinY s_axi_aresetn 40L
 preplace inst block_ram_b -pg 1 -lvl 6 -x 1840 -y 360 -defaultsOSRD -pinDir BRAM_PORTA left -pinY BRAM_PORTA 0L
-preplace inst axi_interconnect -pg 1 -lvl 4 -x 1280 -y 360 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 156 151 157 152 158 153 159 154 160 155 161} -defaultsOSRD -pinDir S00_AXI left -pinY S00_AXI 0L -pinDir M00_AXI right -pinY M00_AXI 0R -pinDir M01_AXI right -pinY M01_AXI 140R -pinDir M02_AXI left -pinY M02_AXI 20L -pinDir S01_AXI left -pinY S01_AXI 40L -pinDir ACLK left -pinY ACLK 60L -pinDir ARESETN left -pinY ARESETN 180L -pinDir S00_ACLK left -pinY S00_ACLK 80L -pinDir S00_ARESETN left -pinY S00_ARESETN 200L -pinDir M00_ACLK left -pinY M00_ACLK 100L -pinDir M00_ARESETN left -pinY M00_ARESETN 220L -pinDir M01_ACLK left -pinY M01_ACLK 120L -pinDir M01_ARESETN left -pinY M01_ARESETN 240L -pinDir M02_ACLK left -pinY M02_ACLK 140L -pinDir M02_ARESETN left -pinY M02_ARESETN 260L -pinDir S01_ACLK left -pinY S01_ACLK 160L -pinDir S01_ARESETN left -pinY S01_ARESETN 280L
+preplace inst axi_interconnect -pg 1 -lvl 4 -x 1280 -y 360 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 148 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 128 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 192 187 193 198 194 188 195 189 196 190 197 191 199} -defaultsOSRD -pinDir S00_AXI left -pinY S00_AXI 0L -pinDir M00_AXI right -pinY M00_AXI 0R -pinDir M01_AXI right -pinY M01_AXI 140R -pinDir M02_AXI left -pinY M02_AXI 20L -pinDir S01_AXI left -pinY S01_AXI 60L -pinDir S02_AXI left -pinY S02_AXI 40L -pinDir ACLK left -pinY ACLK 80L -pinDir ARESETN left -pinY ARESETN 200L -pinDir S00_ACLK left -pinY S00_ACLK 100L -pinDir S00_ARESETN left -pinY S00_ARESETN 220L -pinDir M00_ACLK left -pinY M00_ACLK 320L -pinDir M00_ARESETN left -pinY M00_ARESETN 240L -pinDir M01_ACLK left -pinY M01_ACLK 120L -pinDir M01_ARESETN left -pinY M01_ARESETN 260L -pinDir M02_ACLK left -pinY M02_ACLK 140L -pinDir M02_ARESETN left -pinY M02_ARESETN 280L -pinDir S01_ACLK left -pinY S01_ACLK 160L -pinDir S01_ARESETN left -pinY S01_ARESETN 300L -pinDir S02_ACLK left -pinY S02_ACLK 180L -pinDir S02_ARESETN left -pinY S02_ARESETN 340L
 preplace inst block_ram_a -pg 1 -lvl 6 -x 1840 -y 500 -defaultsOSRD -pinDir BRAM_PORTA left -pinY BRAM_PORTA 0L
 preplace inst button -pg 1 -lvl 2 -x 470 -y 400 -defaultsOSRD -pinDir CLK left -pinY CLK 0L -pinDir PIN left -pinY PIN 20L -pinDir Q right -pinY Q 0R
 preplace inst system_reset -pg 1 -lvl 2 -x 470 -y 220 -swap {0 2 1 3 4 5 6 7 8 9} -defaultsOSRD -pinDir slowest_sync_clk left -pinY slowest_sync_clk 0L -pinDir ext_reset_in left -pinY ext_reset_in 40L -pinDir aux_reset_in left -pinY aux_reset_in 20L -pinDir mb_debug_sys_rst left -pinY mb_debug_sys_rst 60L -pinDir dcm_locked left -pinY dcm_locked 80L -pinDir mb_reset right -pinY mb_reset 0R -pinBusDir bus_struct_reset right -pinBusY bus_struct_reset 20R -pinBusDir peripheral_reset right -pinBusY peripheral_reset 40R -pinBusDir interconnect_aresetn right -pinBusY interconnect_aresetn 60R -pinBusDir peripheral_aresetn right -pinBusY peripheral_aresetn 80R
-preplace inst system_ila_0 -pg 1 -lvl 4 -x 1280 -y 60 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 63 64 58 59 60 61 62} -defaultsOSRD -pinDir SLOT_0_AXI left -pinY SLOT_0_AXI 0L -pinDir SLOT_1_AXI left -pinY SLOT_1_AXI 20L -pinDir clk left -pinY clk 140L -pinDir resetn left -pinY resetn 160L -pinBusDir probe0 left -pinBusY probe0 40L -pinBusDir probe1 left -pinBusY probe1 60L -pinBusDir probe2 left -pinBusY probe2 80L -pinBusDir probe3 left -pinBusY probe3 100L -pinBusDir probe4 left -pinBusY probe4 120L
 preplace inst clk_100_mhz -pg 1 -lvl 1 -x 150 -y 160 -defaultsOSRD -pinDir CLK_IN_D left -pinY CLK_IN_D 0L -pinBusDir IBUF_OUT right -pinBusY IBUF_OUT 0R
-preplace inst controller -pg 1 -lvl 3 -x 840 -y 320 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 22 20 21} -defaultsOSRD -pinDir M_AXI right -pinY M_AXI 0R -pinDir BUTTON left -pinY BUTTON 80L -pinDir M_AXI_ACLK left -pinY M_AXI_ACLK 0L -pinDir M_AXI_ARESETN left -pinY M_AXI_ARESETN 20L
-preplace inst h2f_dma -pg 1 -lvl 3 -x 840 -y 60 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 61 60 59 62} -defaultsOSRD -pinDir M00_AXI right -pinY M00_AXI 0R -pinDir S_AXI right -pinY S_AXI 20R -pinDir AXI_ACLK left -pinY AXI_ACLK 100L -pinDir AXI_ARESETN left -pinY AXI_ARESETN 120L -pinDir FIFO_DATA_VALID right -pinY FIFO_DATA_VALID 40R -pinDir FIFO_WRITE right -pinY FIFO_WRITE 100R -pinDir FIFO_READ right -pinY FIFO_READ 80R -pinDir FIFO_FULL right -pinY FIFO_FULL 60R -pinBusDir BLOCKS_IN_FIFO right -pinBusY BLOCKS_IN_FIFO 120R
+preplace inst controller -pg 1 -lvl 3 -x 840 -y 340 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 22 20 21} -defaultsOSRD -pinDir M_AXI right -pinY M_AXI 0R -pinDir BUTTON left -pinY BUTTON 80L -pinDir M_AXI_ACLK left -pinY M_AXI_ACLK 0L -pinDir M_AXI_ARESETN left -pinY M_AXI_ARESETN 20L
+preplace inst h2f_dma -pg 1 -lvl 3 -x 840 -y 60 -swap {0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 72 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 36 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 95 98 97 96 94} -defaultsOSRD -pinDir M00_AXI right -pinY M00_AXI 0R -pinDir M01_AXI right -pinY M01_AXI 40R -pinDir S_AXI right -pinY S_AXI 20R -pinDir AXI_ACLK left -pinY AXI_ACLK 100L -pinDir AXI_ARESETN left -pinY AXI_ARESETN 120L -pinDir FIFO_DATA_VALID right -pinY FIFO_DATA_VALID 80R -pinDir FIFO_WRITE right -pinY FIFO_WRITE 140R -pinDir FIFO_READ right -pinY FIFO_READ 120R -pinDir FIFO_FULL right -pinY FIFO_FULL 100R -pinBusDir BLOCKS_IN_FIFO right -pinBusY BLOCKS_IN_FIFO 60R
 preplace netloc PIN_0_1 1 0 2 NJ 420 NJ
-preplace netloc button_Q 1 2 1 N 400
+preplace netloc button_Q 1 2 1 650 400n
 preplace netloc ext_reset_in_0_1 1 0 2 NJ 260 NJ
-preplace netloc proc_sys_reset_0_peripheral_aresetn 1 2 3 670 260 1070 300 1430
-preplace netloc system_clock_clk_100mhz 1 1 4 280 160 650 240 1050 280 1450
-preplace netloc FIFO_READ 1 3 1 N 140
-preplace netloc FIFO_FULL 1 3 1 N 120
-preplace netloc FIFO_WRITE 1 3 1 N 160
-preplace netloc FIFO_DATA_VALID 1 3 1 N 100
-preplace netloc BLOCKS_IN_FIFO 1 3 1 N 180
+preplace netloc proc_sys_reset_0_peripheral_aresetn 1 2 3 670 280 1010 300 1430
+preplace netloc system_clock_clk_100mhz 1 1 4 280 160 650 260 1050 280 1450
+preplace netloc FIFO_READ 1 3 1 N 180
+preplace netloc FIFO_FULL 1 3 1 N 160
+preplace netloc FIFO_WRITE 1 3 1 N 200
+preplace netloc FIFO_DATA_VALID 1 3 1 N 140
+preplace netloc BLOCKS_IN_FIFO 1 3 1 N 120
 preplace netloc CLK_IN_D_0_1 1 0 1 NJ 160
 preplace netloc axi_bram_ctrl_0_BRAM_PORTA 1 5 1 NJ 500
 preplace netloc axi_bram_ctrl_b_BRAM_PORTA 1 5 1 NJ 360
 preplace netloc axi_interconnect_0_M00_AXI 1 4 1 N 360
 preplace netloc axi_interconnect_0_M01_AXI 1 4 1 N 500
-preplace netloc axi_interconnect_M02_AXI 1 3 1 1010 80n
-preplace netloc controller_0_M_AXI 1 3 1 1030 80n
-preplace netloc h2c_dma_PCI_AXI 1 3 1 1090 60n
+preplace netloc axi_interconnect_M02_AXI 1 3 1 1090 80n
+preplace netloc controller_0_M_AXI 1 3 1 1030 340n
+preplace netloc h2c_dma_PCI_AXI 1 3 1 1110 60n
+preplace netloc h2f_dma_M01_AXI 1 3 1 1070 100n
 levelinfo -pg 1 0 150 470 840 1280 1590 1840 1950
-pagesize -pg 1 -db -bbox -sgen -140 0 1950 700
+pagesize -pg 1 -db -bbox -sgen -140 0 1950 760
 ",
    "No Loops_ScaleFactor":"0.814299",
-   "No Loops_TopLeft":"-134,-129",
+   "No Loops_TopLeft":"-134,-84",
    "Reduced Jogs_ExpandedHierarchyInLayout":"",
    "Reduced Jogs_Layout":"# # String gsaved with Nlview 7.0r4  2019-12-20 bk=1.5203 VDI=41 GEI=36 GUI=JA:10.0 TLS
 #  -string -flagsOSRD
@@ -104,7 +104,7 @@ pagesize -pg 1 -db -bbox -sgen -140 0 620 200
 "
 }
 {
-   "da_axi4_cnt":"27",
+   "da_axi4_cnt":"28",
    "da_board_cnt":"4",
    "da_bram_cntlr_cnt":"2",
    "da_clkrst_cnt":"14"
