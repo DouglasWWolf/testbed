@@ -242,7 +242,11 @@ module controller#
     localparam TARGET_BASE = 32'h0000_1000;
     localparam REG_CTL_STATE = TARGET_BASE + 5*4;
 
-    reg state;
+    reg[7:0] state;
+    reg[31:0] data;
+    reg[7:0] index, word_count;
+    reg[7:0] id;
+
     always @(posedge M_AXI_ACLK) begin
         amci_write <= 0;
 
@@ -250,18 +254,45 @@ module controller#
             state <= 0;
         end else case(state)
         
+
             0:  if (BUTTON) begin
+                    amci_wdata <= 0;
+                    amci_waddr <= 32'hC000_0000 - 4;
+                    word_count <= 512;
+                    id         <= 0;
+                    state      <= state + 1;
+                end
+
+
+            1:  begin
+                    word_count <= word_count - 1;
+                    index      <= 16;
+                    state      <= state + 1;
+                end
+ 
+            2:  if (amci_widle) begin
+                    if (index == 0) 
+                        state <= state + 1;
+                    else begin
+                        amci_wdata <= {id, id, id, id};
+                        amci_waddr <= amci_waddr + 4;
+                        amci_write <= 1;
+                        index      <= index-1;
+                    end
+                end
+
+            3:  if (word_count) begin
+                    id         <= id + 1;
+                    state      <= 1;
+                end else begin
                     amci_waddr <= REG_CTL_STATE;
                     amci_wdata <= 32'h42;
                     amci_write <= 1;
-                    state      <= 1;
+                    state      <= 0;
                 end
-
-            1:  if (amci_widle) state <= 0;
+                 
 
         endcase
-
-
 
     end
 

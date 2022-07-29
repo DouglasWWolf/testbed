@@ -44,8 +44,6 @@ module dma_engine#
     input wire  AXI_ACLK,
     input wire  AXI_ARESETN,
 
-    output wire START_DMA, AMCI00_READ,
-
     //==========================================================================
     //            This defines the AXI4-Lite slave control interface
     //==========================================================================
@@ -196,13 +194,28 @@ module dma_engine#
 
  );
 
+    //=========================================================================================================
+    // These are parameters and variables that must be accessible to the rest of the module
+    //=========================================================================================================
+    localparam REG_SRC_H    = 0;    // Hi word of the DMA source address
+    localparam REG_SRC_L    = 1;    // Lo word of the DMA source address
+    localparam REG_DST_H    = 2;    // Hi word of the DMA destination address
+    localparam REG_DST_L    = 3;    // Lo word of the DMA destination address
+    localparam REG_COUNT    = 4;    // Number of 4K blocks to DMA transfer
+    localparam REG_CTL_STAT = 5;    // Combined control and status register
+
+    // Storage for the above registers.  (We don't actually store CTL_STAT)    
+    reg [31:0] register[0:4];
+    //=========================================================================================================
+
+
+
+
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //                           This section is standard AXI4 Master logic
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-
-
 
     localparam M00_AXI_DATA_BYTES = (AXI_DATA_WIDTH/8);
 
@@ -556,28 +569,80 @@ module dma_engine#
     localparam AxSIZE          = $clog2(BYTES_PER_BEAT);  
     localparam WSTRB           = (1 << BYTES_PER_BEAT) - 1;
 
-    reg start_dma;
 
-    assign START_DMA = start_dma;
-    assign AMCI00_READ = amci00_read;
+    //=========================================================================================================
+    // This state machine implements the "read" side of the DMA engine, reading blocks of data from the
+    // source and placing them into the FIFO.
+    //=========================================================================================================
+    reg                     start_dma;        // Pulsed in order to start DMA transfer
+    reg[1:0]                dma_read_state;   // The state of the "read from source" state machine
+    reg[31:0]               blocks_remaining; // The number of DMA blocks remaining to read
+    reg[AXI_ADDR_WIDTH-1:0] dma_destination;  // The initial destination address of the DMA transfer
+    reg[1:0]                blocks_in_fifo;   // Number of blocks currently stored in the FIFO
+    
+    // This keeps track of whether the DMA engine is idle
+    wire is_dma_engine_idle = (start_dma == 0 && dma_read_state == 0);
 
-    reg[3:0] state;
     always @(posedge AXI_ACLK) begin
+        
         amci00_read <= 0;
+
+        //!!!!!!!!!!!!!!!!!!!!!!!!!!!!   GET RID OF THIS   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        blocks_in_fifo <= 0;
+
         if (AXI_ARESETN == 0) begin
-            state <= 0;
-        end else case(state)
+            dma_read_state <= 0;
+            amci00_rsize   <= AxSIZE;
+            amci00_rlen    <= BEATS_PER_BURST-1;
+        end else case(dma_read_state)
+        
+            // Here we are waiting for the signal to begin a DMA transfer.  When that
+            // signal arrives, start the read of the first block of data.
             0:  if (start_dma) begin
-                    amci00_raddr <= 32'hC000_0000;
-                    amci00_rsize <= AxSIZE;
-                    amci00_rlen  <= BEATS_PER_BURST-1;
-                    amci00_read  <= 1;
-                    state        <= 1;
+                    blocks_remaining <= register[REG_COUNT] - 1;
+                    dma_destination  <= {register[REG_DST_H], register[REG_DST_L]};
+                    amci00_raddr     <= {register[REG_SRC_H], register[REG_SRC_L]};
+                    amci00_read      <= 1;
+                    dma_read_state   <= 1;
                 end
 
-            1:  if (amci00_ridle) state <= 0;
+            // Here we wait for the AXI read of the block of data to complete.  
+            1:  if (amci00_ridle) begin
+                    blocks_in_fifo <= blocks_in_fifo + 1;
+                    
+                    // If there are still data blocks remaining to be read in...
+                    if (blocks_remaining) begin
+                        blocks_remaining <= blocks_remaining - 1;
+                        amci00_raddr     <= amci00_raddr + BLOCK_SIZE;
+                        
+                        if (blocks_in_fifo < 2)   // If there is room in the FIFO...
+                            amci00_read <= 1;     //   Start reading the next block of data
+                        else                      // Otherwise...
+                            dma_read_state <=2;   //   Go wait for there to be room in the FIFO
+                    end
+                    
+                    // Otherwise, there are no more blocks to be read in.  Go wait for the
+                    // write-data-to-destination half of this engine to finish writing data
+                    else dma_read_state <= 3;
+                end
+
+            // Here we're waiting for there to be sufficient free room in the FIFO
+            // for us to store another block of data.  Once there is room to store 
+            // that data, start the read.
+            2:  if (blocks_in_fifo < 2) begin
+                    amci00_read    <= 1;
+                    dma_read_state <= 1;
+                end
+
+            // Here we are waiting for the "write-data-to-destination" half of the DMA
+            // engine to finish writing data.  Once that is complete, this DMA transfer
+            // is done
+            3:  if (blocks_in_fifo == 0) dma_read_state <= 0;
+                   
+
         endcase
     end
+    //=========================================================================================================
 
 
 
@@ -588,15 +653,6 @@ module dma_engine#
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
-    localparam REG_SRC_H    = 0;    // Hi word of the DMA source address
-    localparam REG_SRC_L    = 1;    // Lo word of the DMA source address
-    localparam REG_DST_H    = 2;    // Hi word of the DMA destination address
-    localparam REG_DST_L    = 3;    // Lo word of the DMA destination address
-    localparam REG_COUNT    = 4;    // Number of 4K blocks to DMA transfer
-    localparam REG_CTL_STAT = 5;    // Combined control and status register
-
-    // Storage for the above registers.  (We don't actually store CTL_STAT)    
-    reg [31:0] register[0:4];
     
     //=========================================================================================================
     // State machine that handles AXI master reads of our AXI4-Lite slave registers
@@ -610,7 +666,6 @@ module dma_engine#
     //    s_axi_rdata     = The read-data to send back to the requesting master
     //=========================================================================================================
     always @(posedge AXI_ACLK) begin
-
 
         if (AXI_ARESETN == 0) begin
             user_read_idle <= 1;
@@ -628,7 +683,7 @@ module dma_engine#
                 REG_DST_H:    s_axi_rdata <= register[REG_DST_H];
                 REG_DST_L:    s_axi_rdata <= register[REG_DST_L];
                 REG_COUNT:    s_axi_rdata <= register[REG_COUNT];
-                REG_CTL_STAT: s_axi_rdata <= 42;
+                REG_CTL_STAT: s_axi_rdata <= is_dma_engine_idle;
                 
                 // A read of an unknown register results in a SLVERR response
                 default:      begin
@@ -675,7 +730,12 @@ module dma_engine#
                 REG_COUNT:    register[REG_COUNT] <= s_axi_wdata;
 
                 // Any write to the control/status register starts a DMA transfer
-                REG_CTL_STAT: start_dma <= 1;
+                REG_CTL_STAT: begin
+                                register[REG_SRC_H] <= 0;
+                                register[REG_SRC_L] <= 32'hC000_0000;
+                                register[REG_COUNT] <= 5;
+                                start_dma <= (is_dma_engine_idle && register[REG_COUNT] > 0);
+                              end
                 
                 // A write to an unknown register results in a SLVERR response
                 default:      s_axi_bresp <= SLVERR;

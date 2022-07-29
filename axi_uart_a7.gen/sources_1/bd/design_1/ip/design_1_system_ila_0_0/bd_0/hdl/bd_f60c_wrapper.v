@@ -64,8 +64,6 @@ module bd_f60c_wrapper
     SLOT_1_AXI_wstrb,
     SLOT_1_AXI_wvalid,
     clk,
-    probe0,
-    probe1,
     resetn);
   input [63:0]SLOT_0_AXI_araddr;
   input [1:0]SLOT_0_AXI_arburst;
@@ -124,8 +122,6 @@ module bd_f60c_wrapper
   input [3:0]SLOT_1_AXI_wstrb;
   input SLOT_1_AXI_wvalid;
   input clk;
-  input [0:0]probe0;
-  input [0:0]probe1;
   input resetn;
 
   wire [63:0]SLOT_0_AXI_araddr;
@@ -185,8 +181,6 @@ module bd_f60c_wrapper
   wire [3:0]SLOT_1_AXI_wstrb;
   wire SLOT_1_AXI_wvalid;
   wire clk;
-  wire [0:0]probe0;
-  wire [0:0]probe1;
   wire resetn;
 
   bd_f60c bd_f60c_i
@@ -247,7 +241,5 @@ module bd_f60c_wrapper
         .SLOT_1_AXI_wstrb(SLOT_1_AXI_wstrb),
         .SLOT_1_AXI_wvalid(SLOT_1_AXI_wvalid),
         .clk(clk),
-        .probe0(probe0),
-        .probe1(probe1),
         .resetn(resetn));
 endmodule
