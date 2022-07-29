@@ -44,6 +44,9 @@ module dma_engine#
     input wire  AXI_ACLK,
     input wire  AXI_ARESETN,
 
+    output wire FIFO_DATA_VALID, FIFO_WRITE, FIFO_READ, FIFO_FULL,
+    output wire[1:0] BLOCKS_IN_FIFO,
+
     //==========================================================================
     //            This defines the AXI4-Lite slave control interface
     //==========================================================================
@@ -206,6 +209,21 @@ module dma_engine#
 
     // Storage for the above registers.  (We don't actually store CTL_STAT)    
     reg [31:0] register[0:4];
+
+
+    // This is needed by the FIFO
+    wire RESET = ~AXI_ARESETN;
+    
+    // We use these two registers to signal to the FIFO
+    reg  fifo_write, fifo_read;
+
+    // The FIFO uses these register to provide information back to us
+    wire fifo_data_valid, fifo_full;         
+
+    assign FIFO_DATA_VALID = fifo_data_valid;
+    assign FIFO_WRITE      = fifo_write;
+    assign FIFO_READ       = fifo_read;
+    assign FIFO_FULL       = fifo_full;
     //=========================================================================================================
 
 
@@ -379,7 +397,9 @@ module dma_engine#
     assign M00_AXI_RREADY  = m00_axi_rready;
     //=========================================================================================================
     always @(posedge AXI_ACLK) begin
-         
+
+        fifo_write <= 0;
+
         if (AXI_ARESETN == 0) begin
             m00_read_state  <= 0;
             m00_axi_arvalid <= 0;
@@ -408,8 +428,10 @@ module dma_engine#
                         m00_axi_arvalid <= 0;
                     end
 
+                    // Every time we see the R(ead)-channel handshake, the data in M00_AXI_RDATA
+                    // will be written to the FIFO
                     if (M00_R_HANDSHAKE) begin
-                        amci00_rdata  <= M00_AXI_RDATA;
+                        fifo_write    <= 1;
                         amci00_rresp  <= M00_AXI_RRESP;
                         if (M00_AXI_RLAST) begin
                             m00_axi_rready <= 0;
@@ -579,21 +601,21 @@ module dma_engine#
     reg[31:0]               blocks_remaining; // The number of DMA blocks remaining to read
     reg[AXI_ADDR_WIDTH-1:0] dma_destination;  // The initial destination address of the DMA transfer
     reg[1:0]                blocks_in_fifo;   // Number of blocks currently stored in the FIFO
+
+    assign BLOCKS_IN_FIFO = blocks_in_fifo;
     
     // This keeps track of whether the DMA engine is idle
     wire is_dma_engine_idle = (start_dma == 0 && dma_read_state == 0);
 
     always @(posedge AXI_ACLK) begin
-        
-        amci00_read <= 0;
 
-        //!!!!!!!!!!!!!!!!!!!!!!!!!!!!   GET RID OF THIS   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        blocks_in_fifo <= 0;
+        amci00_read <= 0;
 
         if (AXI_ARESETN == 0) begin
             dma_read_state <= 0;
             amci00_rsize   <= AxSIZE;
             amci00_rlen    <= BEATS_PER_BURST-1;
+            blocks_in_fifo <= 0;
         end else case(dma_read_state)
         
             // Here we are waiting for the signal to begin a DMA transfer.  When that
@@ -608,14 +630,13 @@ module dma_engine#
 
             // Here we wait for the AXI read of the block of data to complete.  
             1:  if (amci00_ridle) begin
-                    blocks_in_fifo <= blocks_in_fifo + 1;
                     
                     // If there are still data blocks remaining to be read in...
                     if (blocks_remaining) begin
                         blocks_remaining <= blocks_remaining - 1;
                         amci00_raddr     <= amci00_raddr + BLOCK_SIZE;
                         
-                        if (blocks_in_fifo < 2)   // If there is room in the FIFO...
+                        if (blocks_in_fifo == 0)  // If there is room in the FIFO...
                             amci00_read <= 1;     //   Start reading the next block of data
                         else                      // Otherwise...
                             dma_read_state <=2;   //   Go wait for there to be room in the FIFO
@@ -624,6 +645,10 @@ module dma_engine#
                     // Otherwise, there are no more blocks to be read in.  Go wait for the
                     // write-data-to-destination half of this engine to finish writing data
                     else dma_read_state <= 3;
+
+                    // And there is now one more block in the FIFO
+                    blocks_in_fifo <= blocks_in_fifo + 1;
+
                 end
 
             // Here we're waiting for there to be sufficient free room in the FIFO
@@ -749,6 +774,77 @@ module dma_engine#
     //                           End of AXI slave read/write handlers
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+
+
+
+    //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+    //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+    //    This is the FIFO that serves as buffer between the read-from-source DMA state-machine and the
+    //    write-to-destination  DMA state-machine
+    //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+    //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+
+    xpm_fifo_sync #
+    (
+      .CASCADE_HEIGHT       (0),       
+      .DOUT_RESET_VALUE     ("0"),    
+      .ECC_MODE             ("no_ecc"),       
+      .FIFO_MEMORY_TYPE     ("auto"), 
+      .FIFO_READ_LATENCY    (1),     
+      .FIFO_WRITE_DEPTH     (BEATS_PER_BURST * 2),    
+      .FULL_RESET_VALUE     (0),      
+      .PROG_EMPTY_THRESH    (1),    
+      .PROG_FULL_THRESH     (1),     
+      .RD_DATA_COUNT_WIDTH  (1),   
+      .READ_DATA_WIDTH      (AXI_DATA_WIDTH),
+      .READ_MODE            ("fwft"),         
+      .SIM_ASSERT_CHK       (0),        
+      .USE_ADV_FEATURES     ("1000"), 
+      .WAKEUP_TIME          (0),           
+      .WRITE_DATA_WIDTH     (AXI_DATA_WIDTH), 
+      .WR_DATA_COUNT_WIDTH  (1)    
+
+      //------------------------------------------------------------
+      // These exist only in xpm_fifo_async, not in xpm_fifo_sync
+      //.CDC_SYNC_STAGES(2),       // DECIMAL
+      //.RELATED_CLOCKS(0),        // DECIMAL
+      //------------------------------------------------------------
+    )
+    xpm_dma_fifo
+    (
+        .rst        (RESET          ),                      
+        .full       (fifo_full      ),              
+        .din        (M00_AXI_RDATA  ),                 
+        .wr_en      (fifo_write     ),            
+        .wr_clk     (M_AXI_ACLK     ),          
+        .data_valid (fifo_data_valid), 
+        .dout       (               ),              
+        .empty      (               ),            
+        .rd_en      (fifo_read      ),            
+
+      //------------------------------------------------------------
+      // This only exists in xpm_fifo_async, not in xpm_fifo_sync
+      // .rd_clk    (CLK               ),                     
+      //------------------------------------------------------------
+
+        .sleep(),                        
+        .injectdbiterr(),                
+        .injectsbiterr(),                
+        .overflow(),                     
+        .prog_empty(),                   
+        .prog_full(),                    
+        .rd_data_count(),                
+        .rd_rst_busy(),                  
+        .sbiterr(),                      
+        .underflow(),                    
+        .wr_ack(),                       
+        .wr_data_count(),                
+        .wr_rst_busy(),                  
+        .almost_empty(),                 
+        .almost_full(),                  
+        .dbiterr()                       
+    );
+
 
 
 endmodule
