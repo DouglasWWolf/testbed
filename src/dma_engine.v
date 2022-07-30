@@ -34,18 +34,21 @@
 
 module dma_engine#
 (
-    parameter integer AXI_DATA_WIDTH   = 512,
-    parameter integer AXI_ADDR_WIDTH   =  64,
-    parameter integer S_AXI_ADDR_WIDTH =   5,
-    parameter integer S_AXI_DATA_WIDTH =  32  
+    parameter integer AXI_SRC_ADDR_OFFSET = 0,
+    parameter integer AXI_DST_ADDR_OFFSET = 64'hC200_0000,
+    parameter integer AXI_DATA_WIDTH      = 512,
+    parameter integer AXI_ADDR_WIDTH      =  64,
+    parameter integer S_AXI_ADDR_WIDTH    =   5,
+    parameter integer S_AXI_DATA_WIDTH    =  32 
 
 )
 (
     input wire  AXI_ACLK,
     input wire  AXI_ARESETN,
 
-    output wire FIFO_DATA_VALID, FIFO_WRITE, FIFO_READ, FIFO_FULL,
-    output wire[1:0] BLOCKS_IN_FIFO,
+    output wire FIFO_WRITE, FIFO_READ, FIFO_FULL, FIFO_EMPTY,
+    output wire WR_ACK, WR_RST_BUSY,
+    output wire[1:0] BLOCKS_IN_FIFO, M01_WRITE_STATE,
 
     //==========================================================================
     //            This defines the AXI4-Lite slave control interface
@@ -138,7 +141,7 @@ module dma_engine#
     input  wire                                              M00_AXI_RLAST,
     //==========================================================================
     
-    
+     
     
     //==========================================================================
     //  This defines the AXI Master interface that connects to the destination
@@ -198,9 +201,23 @@ module dma_engine#
 
  );
 
+
+
+
     //=========================================================================================================
     // These are parameters and variables that must be accessible to the rest of the module
     //=========================================================================================================
+
+    // This is the number of bytes in a burst.  Since AXI bursts aren't allowed to cross
+    // 4096-byte boundaries, 4096 is the maximum number of bytes in a single burst
+    localparam BLOCK_SIZE      = 4096;   
+
+    // These calculations assume AXI_DATA_WIDTH is a power of 2
+    localparam BYTES_PER_BEAT  = AXI_DATA_WIDTH / 8;
+    localparam BEATS_PER_BURST = BLOCK_SIZE / BYTES_PER_BEAT;
+    localparam AxSIZE          = $clog2(BYTES_PER_BEAT);  
+    localparam INCR_BURST      = 1;
+
     localparam REG_SRC_H    = 0;    // Hi word of the DMA source address
     localparam REG_SRC_L    = 1;    // Lo word of the DMA source address
     localparam REG_DST_H    = 2;    // Hi word of the DMA destination address
@@ -211,20 +228,35 @@ module dma_engine#
     // Storage for the above registers.  (We don't actually store CTL_STAT)    
     reg [31:0] register[0:4];
 
+    // When this is pulsed high, the DMA state-machine springs into action.
+    reg        start_dma;       
+    
+    // The state of the DMA state machine
+    reg[1:0]   dma_state;   
+
+    // The number of data blocks currently stored in the FIFO
+    reg[1:0]   blocks_in_fifo;   
 
     // This is needed by the FIFO
     wire RESET = ~AXI_ARESETN;
-    
+
+    // This keeps track of whether the DMA engine is idle
+    wire is_dma_engine_idle = (start_dma == 0 && dma_state == 0);
+
+    // This will pulse high for 1 cycle every time a data block gets
+    // written to the DMA destination
+    reg  write_burst_complete;
+
     // We use these two registers to signal to the FIFO
     reg  fifo_write, fifo_read;
 
     // The FIFO uses these register to provide information back to us
-    wire fifo_data_valid, fifo_full;         
+    wire fifo_empty, fifo_full;         
 
-    assign FIFO_DATA_VALID = fifo_data_valid;
-    assign FIFO_WRITE      = fifo_write;
-    assign FIFO_READ       = fifo_read;
-    assign FIFO_FULL       = fifo_full;
+    assign FIFO_EMPTY = fifo_empty;
+    assign FIFO_WRITE = fifo_write;
+    assign FIFO_READ  = fifo_read;
+    assign FIFO_FULL  = fifo_full;
     //=========================================================================================================
 
 
@@ -232,170 +264,51 @@ module dma_engine#
 
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-    //                           This section is standard AXI4 Master logic
+    //          This section is AXI4 Master (with bursting) logic that transfers to/from a FIFO
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-
-    localparam M00_AXI_DATA_BYTES = (AXI_DATA_WIDTH/8);
-
-    // Assign all of the "write transaction" signals that aren't in the AXI4-Lite spec
-    assign M00_AXI_AWID    = 1;   // Arbitrary ID
-    assign M00_AXI_AWLEN   = 0;   // Burst length of 1
-    assign M00_AXI_AWSIZE  = 2;   // 2 = 4 bytes per burst (assuming a 32-bit AXI data-bus)
-    assign M00_AXI_WLAST   = 1;   // Each beat is always the last beat of the burst
-    assign M00_AXI_AWBURST = 1;   // Each beat of the burst increments by 1 address (ignored)
-    assign M00_AXI_AWLOCK  = 0;   // Normal signaling
-    assign M00_AXI_AWCACHE = 2;   // Normal, no cache, no buffer
-    assign M00_AXI_AWQOS   = 0;   // Lowest quality of service, unused
-
-    // Assign all of the "read transaction" signals that aren't in the AXI4-Lite spec
-    assign M00_AXI_ARLOCK  = 0;   // Normal signaling
-    assign M00_AXI_ARID    = 1;   // Arbitrary ID
-    assign M00_AXI_ARBURST = 1;   // Increment address on each beat of the burst (unused)
-    assign M00_AXI_ARCACHE = 2;   // Normal, no cache, no buffer
-    assign M00_AXI_ARQOS   = 0;   // Lowest quality of service (unused)
-
-    // Define the handshakes for all 5 master AXI channels
-    wire M00_B_HANDSHAKE  = M00_AXI_BVALID  & M00_AXI_BREADY;
-    wire M00_R_HANDSHAKE  = M00_AXI_RVALID  & M00_AXI_RREADY;
-    wire M00_W_HANDSHAKE  = M00_AXI_WVALID  & M00_AXI_WREADY;
-    wire M00_AR_HANDSHAKE = M00_AXI_ARVALID & M00_AXI_ARREADY;
-    wire M00_AW_HANDSHAKE = M00_AXI_AWVALID & M00_AXI_AWREADY;
-
-    //=========================================================================================================
-    // FSM logic used for writing to the slave device.
-    //
-    //  To start:   amci00_waddr = Address to write to
-    //              amci00_wdata = Data to write at that address
-    //              amci00_write = Pulsed high for one cycle
-    //
-    //  At end:     Write is complete when "amci00_widle" goes high
-    //              amci00_wresp = AXI_BRESP "write response" signal from slave
-    //=========================================================================================================
-    reg[1:0]                m00_write_state = 0;
-
-    // FSM user interface inputs
-    reg[AXI_ADDR_WIDTH-1:0] amci00_waddr;
-    reg[AXI_DATA_WIDTH-1:0] amci00_wdata;
-    reg                     amci00_write;
-
-    // FSM user interface outputs
-    wire     amci00_widle = (m00_write_state == 0 && amci00_write == 0);     
-    reg[1:0] amci00_wresp;
-
-    // AXI registers and outputs
-    reg[AXI_ADDR_WIDTH-1:0] m00_axi_awaddr;
-    reg[AXI_DATA_WIDTH-1:0] m00_axi_wdata;
-    reg                     m00_axi_awvalid = 0;
-    reg                     m00_axi_wvalid = 0;
-    reg                     m00_axi_bready = 0;
-
-    // Wire up the AXI interface outputs
-    assign M00_AXI_AWADDR  = m00_axi_awaddr;
-    assign M00_AXI_WDATA   = m00_axi_wdata;
-    assign M00_AXI_AWVALID = m00_axi_awvalid;
-    assign M00_AXI_WVALID  = m00_axi_wvalid;
-    assign M00_AXI_AWPROT  = 3'b000;
-    assign M00_AXI_WSTRB   = (1 << M00_AXI_DATA_BYTES) - 1; // usually 4'b1111
-    assign M00_AXI_BREADY  = m00_axi_bready;
-    //=========================================================================================================
-     
-    always @(posedge AXI_ACLK) begin
-
-        // If we're in RESET mode...
-        if (AXI_ARESETN == 0) begin
-            m00_write_state <= 0;
-            m00_axi_awvalid <= 0;
-            m00_axi_wvalid  <= 0;
-            m00_axi_bready  <= 0;
-        end        
-        
-        // Otherwise, we're not in RESET and our state machine is running
-        else case (m00_write_state)
-            
-            // Here we're idle, waiting for someone to raise the 'amci00_write' flag.  Once that happens,
-            // we'll place the user specified address and data onto the AXI bus, along with the flags that
-            // indicate that the address and data values are valid
-            0:  if (amci00_write) begin
-                    m00_axi_awaddr  <= amci00_waddr;  // Place our address onto the bus
-                    m00_axi_wdata   <= amci00_wdata;  // Place our data onto the bus
-                    m00_axi_awvalid <= 1;             // Indicate that the address is valid
-                    m00_axi_wvalid  <= 1;             // Indicate that the data is valid
-                    m00_axi_bready  <= 1;             // Indicate that we're ready for the slave to respond
-                    m00_write_state <= 1;             // On the next clock cycle, we'll be in the next state
-                end
-                
-           // Here, we're waiting around for the slave to acknowledge our request by asserting M00_AXI_AWREADY
-           // and M00_AXI_WREADY.  Once that happens, we'll de-assert the "valid" lines.  Keep in mind that we
-           // don't know what order AWREADY and WREADY will come in, and they could both come at the same
-           // time.      
-           1:   begin   
-                    // Keep track of whether we have seen the slave raise AWREADY or WREADY
-                    if (M00_AW_HANDSHAKE) m00_axi_awvalid <= 0;
-                    if (M00_W_HANDSHAKE ) m00_axi_wvalid  <= 0;
-
-                    // If we've seen AWREADY (or if its raised now) and if we've seen WREADY (or if it's raised now)...
-                    if ((~m00_axi_awvalid || M00_AW_HANDSHAKE) && (~m00_axi_wvalid || M00_W_HANDSHAKE)) begin
-                        m00_write_state <= 2;
-                    end
-                end
-                
-           // Wait around for the slave to assert "M00_AXI_BVALID".  When it does, we'll acknowledge
-           // it by raising M00_AXI_BREADY for one cycle, and go back to idle state
-           2:   if (M00_B_HANDSHAKE) begin
-                    amci00_wresp  <= M00_AXI_BRESP;
-                    m00_axi_bready  <= 0;
-                    m00_write_state <= 0;
-                end
-
-        endcase
-    end
-    //=========================================================================================================
-
-
-
-
 
     //=========================================================================================================
     // FSM logic used for reading from a slave device.
     //
     //  To start:   amci00_raddr = Address to read from
-    //              amci00_rsize = Code that indicates how many bytes wide a single beat is
-    //              amci00_rlen  = How many "beats" (i.e., data words) to read after the first
     //              amci00_read  = Pulsed high for one cycle
     //
     //  At end:   Read is complete when "amci00_ridle" goes high.
-    //            amci00_rdata = The data that was read
     //            amci00_rresp = The AXI "read response" that is used to indicate success or failure
     //=========================================================================================================
-    reg                     m00_read_state = 0;
+
+    // Define the handshakes for AXI channels we need
+    wire M00_R_HANDSHAKE  = M00_AXI_RVALID  & M00_AXI_RREADY;
+    wire M00_AR_HANDSHAKE = M00_AXI_ARVALID & M00_AXI_ARREADY;
+    
+    // Assign all of the "read transaction" signals that aren't in the AXI4-Lite spec
+
+    reg                     m00_read_state;
 
     // FSM user interface inputs
     reg[AXI_ADDR_WIDTH-1:0] amci00_raddr;
-    reg[2:0]                amci00_rsize;
-    reg[7:0]                amci00_rlen;
     reg                     amci00_read;
 
     // FSM user interface outputs
-    reg[AXI_DATA_WIDTH-1:0] amci00_rdata;
     reg[1:0]                amci00_rresp;
     wire                    amci00_ridle = (m00_read_state == 0 && amci00_read == 0);     
 
     // AXI registers and outputs
-    reg[AXI_ADDR_WIDTH-1:0] m00_axi_araddr;
-    reg                     m00_axi_arvalid;
-    reg[7:0]                m00_axi_arlen;
-    reg[2:0]                m00_axi_arsize;
-    reg                     m00_axi_rready;
+    reg[AXI_ADDR_WIDTH-1:0] m00_axi_araddr;  assign M00_AXI_ARADDR  = m00_axi_araddr;
+    reg                     m00_axi_arvalid; assign M00_AXI_ARVALID = m00_axi_arvalid;
+    reg                     m00_axi_rready;  assign M00_AXI_RREADY  = m00_axi_rready;
     
-
     // Wire up the AXI interface outputs
-    assign M00_AXI_ARADDR  = m00_axi_araddr;
-    assign M00_AXI_ARVALID = m00_axi_arvalid;
-    assign M00_AXI_ARPROT  = 3'b001;
-    assign M00_AXI_ARLEN   = m00_axi_arlen;
-    assign M00_AXI_ARSIZE  = m00_axi_arsize;
-    assign M00_AXI_RREADY  = m00_axi_rready;
+    assign M00_AXI_ARBURST = INCR_BURST;
+    assign M00_AXI_ARSIZE  = AxSIZE;
+    assign M00_AXI_ARLEN   = BEATS_PER_BURST - 1;
+    assign M00_AXI_ARPROT  = 1;
+    assign M00_AXI_ARLOCK  = 0;   // Normal signaling
+    assign M00_AXI_ARID    = 1;   // Arbitrary ID
+    assign M00_AXI_ARBURST = 1;   // Increment address on each beat of the burst (unused)
+    assign M00_AXI_ARCACHE = 2;   // Normal, no cache, no buffer
+    assign M00_AXI_ARQOS   = 0;   // Lowest quality of service (unused)
     //=========================================================================================================
     always @(posedge AXI_ACLK) begin
 
@@ -411,8 +324,6 @@ module dma_engine#
             // a AXI read at the address specified in "amci00_raddr"
             0:  if (amci00_read) begin
                     m00_axi_araddr  <= amci00_raddr;
-                    m00_axi_arsize  <= amci00_rsize;
-                    m00_axi_arlen   <= amci00_rlen;
                     m00_axi_arvalid <= 1;
                     m00_axi_rready  <= 1;
                     m00_read_state  <= 1;
@@ -433,10 +344,10 @@ module dma_engine#
                     // will be written to the FIFO
                     if (M00_R_HANDSHAKE) begin
                         fifo_write    <= 1;
-                        amci00_rresp  <= M00_AXI_RRESP;
                         if (M00_AXI_RLAST) begin
                             m00_axi_rready <= 0;
                             m00_read_state <= 0;
+                            amci00_rresp   <= M00_AXI_RRESP;
                         end
                     end
                 end
@@ -444,6 +355,109 @@ module dma_engine#
         endcase
     end
     //=========================================================================================================
+
+
+
+    //=========================================================================================================
+    // FSM logic used for reading from the FIFO and writing data to the DMA destination
+    //
+    //  To start:   
+    //              
+    //              
+    //
+    //  At end:     
+    //              
+    //=========================================================================================================
+    reg[1:0] m01_write_state; assign M01_WRITE_STATE = m01_write_state;
+    reg[7:0] beats_remaining;
+
+    // Wire up the registered AXI outputs
+    reg[AXI_ADDR_WIDTH-1:0] m01_axi_awaddr;  assign M01_AXI_AWADDR  = m01_axi_awaddr;
+    reg[AXI_DATA_WIDTH-1:0] m01_axi_wdata;   assign M01_AXI_WDATA   = m01_axi_wdata;
+    reg                     m01_axi_awvalid; assign M01_AXI_AWVALID = m01_axi_awvalid;
+    reg                     m01_axi_wvalid;  assign M01_AXI_WVALID  = m01_axi_wvalid;
+    reg                     m01_axi_bready;  assign M01_AXI_BREADY  = m01_axi_bready;
+    reg                     m01_axi_wlast;   assign M01_AXI_WLAST   = m01_axi_wlast;
+
+    // Wire up the hard-coded AXI outputs
+    assign M01_AXI_AWPROT  = 0;
+    assign M01_AXI_AWSIZE  = AxSIZE;
+    assign M01_AXI_AWLEN   = BEATS_PER_BURST - 1;
+    assign M01_AXI_AWBURST = INCR_BURST;
+    assign M01_AXI_WSTRB   = (1 << BYTES_PER_BEAT) -1;
+
+    // Define the handshakes for AXI channels we need
+    wire M01_AW_HANDSHAKE = M01_AXI_AWVALID & M01_AXI_AWREADY;
+    wire M01_W_HANDSHAKE  = M01_AXI_WVALID  & M01_AXI_WREADY;
+    wire M01_B_HANDSHAKE  = M01_AXI_BVALID  & M01_AXI_BREADY;
+    //=========================================================================================================
+    reg[7:0] beat_count; 
+
+    always @(posedge AXI_ACLK) begin
+        
+        // These signals should be low on any clock cycle they aren't explicitly driven high
+        write_burst_complete <= 0;
+        m01_axi_wvalid       <= 0;
+        fifo_read            <= 0;
+        
+        // If we're in RESET mode...
+        if (AXI_ARESETN == 0) begin
+            m01_write_state <= 0;
+            m01_axi_awvalid <= 0;
+            m01_axi_wvalid  <= 0;
+            m01_axi_bready  <= 0; 
+        end        
+        
+        // Otherwise, we're not in RESET and our state machine is running
+        else case (m01_write_state)
+            
+            // Wait for the signal to start, then record the AXI address where
+            // we should start writing data
+            0:  if (start_dma) begin
+                    m01_axi_awaddr   <= {register[REG_DST_H], register[REG_DST_L]} + AXI_DST_ADDR_OFFSET;
+                    m01_write_state  <= 1;
+                end
+
+            // If there is a block waiting for us in the FIFO... 
+            1:  if (blocks_in_fifo) begin
+                    m01_axi_bready  <= 0;                    // We'll assert this after the burst
+                    m01_axi_awvalid <= 1;                    // Tell the slave that the address on the bus is valid
+                    beats_remaining <= BEATS_PER_BURST;      // This is how many beats we have yet to write to the bus
+                    if (M01_AW_HANDSHAKE) begin              // If we see the "Write-Address" handshake...
+                        m01_axi_awvalid <= 0;                //   Stop saying the address is valid
+                        m01_write_state <= 2;                //   Go start writing data beats to the AXI bus
+                    end
+                end else begin
+                    if (is_dma_engine_idle) m01_write_state <= 0;
+                end
+            
+            
+            // If there is data available in the FIFO, send it to the AXI destination
+            2:  if (fifo_empty == 0) begin
+                    m01_axi_wvalid  <= 1;
+                    m01_axi_wlast   <= (beats_remaining == 1);
+                    if (M01_W_HANDSHAKE) begin
+                        fifo_read <= 1;
+                        if (beats_remaining == 1) begin
+                            m01_axi_bready  <= 1;
+                            m01_write_state <= 3;
+                        end
+                        beats_remaining <= beats_remaining - 1;
+                    end
+                end
+
+            3:  if (M01_B_HANDSHAKE) begin
+                    m01_axi_bready       <= 0;
+                    m01_axi_awaddr       <= m01_axi_awaddr + BLOCK_SIZE;
+                    m01_write_state      <= 1;
+                    write_burst_complete <= 1;
+                end
+
+        endcase
+    end
+    //=========================================================================================================
+
+
 
 
 
@@ -521,6 +535,7 @@ module dma_engine#
     //=========================================================================================================
     // FSM logic for handling AXI4-Lite write-to-slave transactions
     //=========================================================================================================
+
     // When a valid address is presented on the bus, this register holds it
     reg[S_AXI_ADDR_WIDTH-1:0] s_axi_awaddr;
 
@@ -582,51 +597,37 @@ module dma_engine#
     //<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
 
-    // This is the number of bytes in a burst.  Since AXI bursts aren't allowed to cross
-    // 4096-byte boundaries, 4096 is the maximum number of bytes in a single burst
-    localparam BLOCK_SIZE      = 4096;   
-
-    // These calculations assume AXI_DATA_WIDTH is a power of 2
-    localparam BYTES_PER_BEAT  = AXI_DATA_WIDTH / 8;
-    localparam BEATS_PER_BURST = BLOCK_SIZE / BYTES_PER_BEAT;
-    localparam AxSIZE          = $clog2(BYTES_PER_BEAT);  
-    localparam WSTRB           = (1 << BYTES_PER_BEAT) - 1;
-
 
     //=========================================================================================================
     // This state machine implements the "read" side of the DMA engine, reading blocks of data from the
     // source and placing them into the FIFO.
     //=========================================================================================================
-    reg                     start_dma;        // Pulsed in order to start DMA transfer
-    reg[1:0]                dma_read_state;   // The state of the "read from source" state machine
-    reg[31:0]               blocks_remaining; // The number of DMA blocks remaining to read
-    reg[AXI_ADDR_WIDTH-1:0] dma_destination;  // The initial destination address of the DMA transfer
-    reg[1:0]                blocks_in_fifo;   // Number of blocks currently stored in the FIFO
-
-    assign BLOCKS_IN_FIFO = blocks_in_fifo;
     
-    // This keeps track of whether the DMA engine is idle
-    wire is_dma_engine_idle = (start_dma == 0 && dma_read_state == 0);
+    // The number of DMA blocks remaining to read
+    reg[31:0]               blocks_remaining; 
+    
+    assign BLOCKS_IN_FIFO = blocks_in_fifo;
 
     always @(posedge AXI_ACLK) begin
 
         amci00_read <= 0;
+ 
+        // Every time a block of data gets pulled out of the FIFO and written to the 
+        // AXI destination, decrement the count of data-blocks that are in the FIFO.
+        if (write_burst_complete && blocks_in_fifo) blocks_in_fifo <= blocks_in_fifo - 1;
 
         if (AXI_ARESETN == 0) begin
-            dma_read_state <= 0;
-            amci00_rsize   <= AxSIZE;
-            amci00_rlen    <= BEATS_PER_BURST-1;
+            dma_state <= 0;
             blocks_in_fifo <= 0;
-        end else case(dma_read_state)
+        end else case(dma_state)
         
             // Here we are waiting for the signal to begin a DMA transfer.  When that
             // signal arrives, start the read of the first block of data.
             0:  if (start_dma) begin
                     blocks_remaining <= register[REG_COUNT] - 1;
-                    dma_destination  <= {register[REG_DST_H], register[REG_DST_L]};
-                    amci00_raddr     <= {register[REG_SRC_H], register[REG_SRC_L]};
+                    amci00_raddr     <= {register[REG_SRC_H], register[REG_SRC_L]} + AXI_SRC_ADDR_OFFSET;
                     amci00_read      <= 1;
-                    dma_read_state   <= 1;
+                    dma_state        <= 1;
                 end
 
             // Here we wait for the AXI read of the block of data to complete.  
@@ -640,12 +641,12 @@ module dma_engine#
                         if (blocks_in_fifo == 0)  // If there is room in the FIFO...
                             amci00_read <= 1;     //   Start reading the next block of data
                         else                      // Otherwise...
-                            dma_read_state <=2;   //   Go wait for there to be room in the FIFO
+                            dma_state <=2;        //   Go wait for there to be room in the FIFO
                     end
                     
                     // Otherwise, there are no more blocks to be read in.  Go wait for the
                     // write-data-to-destination half of this engine to finish writing data
-                    else dma_read_state <= 3;
+                    else dma_state <= 3;
 
                     // And there is now one more block in the FIFO
                     blocks_in_fifo <= blocks_in_fifo + 1;
@@ -656,14 +657,14 @@ module dma_engine#
             // for us to store another block of data.  Once there is room to store 
             // that data, start the read.
             2:  if (blocks_in_fifo < 2) begin
-                    amci00_read    <= 1;
-                    dma_read_state <= 1;
+                    amci00_read <= 1;
+                    dma_state   <= 1;
                 end
 
             // Here we are waiting for the "write-data-to-destination" half of the DMA
             // engine to finish writing data.  Once that is complete, this DMA transfer
             // is done
-            3:  if (blocks_in_fifo == 0) dma_read_state <= 0;
+            3:  if (blocks_in_fifo == 0) dma_state <= 0;
                    
 
         endcase
@@ -733,6 +734,7 @@ module dma_engine#
     //    user_write_idle = 1
     //    s_axi_bresp     = OKAY/SLVERR response to send to the requesting master
     //=========================================================================================================
+
     always @(posedge AXI_ACLK) begin
 
         // When start_dma gets set to 1, ensure that it's a one-clock-cycle pulse
@@ -759,8 +761,11 @@ module dma_engine#
                 REG_CTL_STAT: begin
                                 register[REG_SRC_H] <= 0;
                                 register[REG_SRC_L] <= 32'hC000_0000;
+                                register[REG_DST_H] <= 0;
+                                register[REG_DST_L] <= 0;
                                 register[REG_COUNT] <= 5;
-                                start_dma <= (is_dma_engine_idle && register[REG_COUNT] > 0);
+                                start_dma <= (is_dma_engine_idle);
+                                //? GOOD LINE start_dma <= (is_dma_engine_idle && register[REG_COUNT] > 0);
                               end
                 
                 // A write to an unknown register results in a SLVERR response
@@ -800,7 +805,7 @@ module dma_engine#
       .READ_DATA_WIDTH      (AXI_DATA_WIDTH),
       .READ_MODE            ("fwft"),         
       .SIM_ASSERT_CHK       (0),        
-      .USE_ADV_FEATURES     ("1000"), 
+      .USE_ADV_FEATURES     ("1010"), 
       .WAKEUP_TIME          (0),           
       .WRITE_DATA_WIDTH     (AXI_DATA_WIDTH), 
       .WR_DATA_COUNT_WIDTH  (1)    
@@ -818,9 +823,9 @@ module dma_engine#
         .din        (M00_AXI_RDATA  ),                 
         .wr_en      (fifo_write     ),            
         .wr_clk     (M_AXI_ACLK     ),          
-        .data_valid (fifo_data_valid), 
-        .dout       (               ),              
-        .empty      (               ),            
+        .data_valid (               ), 
+        .dout       (M01_AXI_WDATA  ),              
+        .empty      (fifo_empty     ),            
         .rd_en      (fifo_read      ),            
 
       //------------------------------------------------------------
@@ -838,9 +843,9 @@ module dma_engine#
         .rd_rst_busy(),                  
         .sbiterr(),                      
         .underflow(),                    
-        .wr_ack(),                       
+        .wr_ack(WR_ACK),                       
         .wr_data_count(),                
-        .wr_rst_busy(),                  
+        .wr_rst_busy(WR_RST_BUSY),                  
         .almost_empty(),                 
         .almost_full(),                  
         .dbiterr()                       

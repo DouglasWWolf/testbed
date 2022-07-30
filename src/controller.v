@@ -256,11 +256,18 @@ module controller#
         
 
             0:  if (BUTTON) begin
-                    amci_wdata <= 0;
-                    amci_waddr <= 32'hC000_0000 - 4;
-                    word_count <= 512;
-                    id         <= 0;
-                    state      <= state + 1;
+                    amci_waddr <= REG_CTL_STATE;
+                    amci_wdata <= 32'h42;
+                    amci_write <= 1;
+                    state      <= 0;
+
+
+
+//                    amci_wdata <= 0;
+//                    amci_waddr <= 32'hC000_0000 - 4;
+//                    word_count <= 512;
+//                    id         <= 0;
+//                    state      <= state + 1;
                 end
 
 
